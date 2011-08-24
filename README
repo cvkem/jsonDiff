@@ -1,13 +1,18 @@
 # jsonDiff
 
-FIXME: write description
+Library to compare two json-object and find the difference/patches. Patches can be replayed to another similar json-object.
 
-## Usage
+(defn findPatchesJson [org mod] ...)
+  "Find the patches to translate json-object 'org' to 'mod'. Wrapper that calls 'findPatchesZipper'
+  (See 'findPatchesZipper' for details)."
 
-FIXME: write
 
-## License
+(defn applyPatchesJson [org patches] ...)
+Applies the 'patches' to json-object 'org' and returns the modified object.
 
-Copyright (C) 2010 FIXME
+
+
+
+Copyright (C) 2010 Vinzi
 
 Distributed under the Eclipse Public License, the same as Clojure.

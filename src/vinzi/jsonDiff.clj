@@ -1,14 +1,7 @@
 (ns vinzi.jsonDiff
-;;  (:use [clojure.walk :only [postwalk]])
   (:require  [clojure
 	      [zip :as zip]])
-  ;; 	      [string :as s]])
-  ;; (:require  [clojure.contrib
-  ;; 	      [sql :as sql]
-  ;; 	      [json :as json]
-  ;; 	      [duck-streams :as ds :only [reader]]])
   (:use [clojure.pprint])
-;;  (:use [alex-and-georges.debug-repl :as dr])
   (:use [vinzi.jsonZip])
   )
 
@@ -196,8 +189,8 @@
   )
 
 (defn applyPatchesJson
-  "Applies the 'patches' to jsonZipper 'org'. Wrapper that calls 'applyPatchesZipper'
-  (See 'applyPatchesZipper' for details)."
+  "Applies the 'patches' to json-object 'org' and returns the modified object.
+   Wrapper that calls 'applyPatchesZipper' (See 'applyPatchesZipper' for details)."
   [org patches]
   (zip/root (applyPatchesZipper (jsonZipper org) patches)))
 
