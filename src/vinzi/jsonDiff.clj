@@ -48,7 +48,9 @@
      (findPatchesZipper org mod [] []))
   ([org mod patches path]
      (let [parPath path
-	   path (conj path (jsonKey org))
+	   path (if (nil? org)
+		  path
+		  (conj path (jsonKey org)))
 	   orgNode (if (nil? org) nil (zip/node org))
 	   modNode (if (nil? mod) nil (zip/node mod))
 	   getSortKvs  (fn [data]
@@ -62,7 +64,8 @@
 			     (sort-by first kvs)
 			     ())))
 	   ;; extend the patchList
-	   deletePatch    (fn [rec p pl] (conj p (Patch. pl actDelete (first rec) nil)))
+	   deletePatch    (fn [rec p pl]
+			    (conj p (Patch. pl actDelete (first rec) nil)))
 	   insertPatch    (fn [rec p pl]
 			    (let [k      (first rec)
 				  valZip (second rec)
@@ -75,6 +78,7 @@
 	   kvsPatchEquals (fn [fso fsm p pl]
 			    (let [vo (second fso)
 				  vm (second fsm)
+				  ;; iterate over the second field of fso and fsm (the actual node (not the zipper)
 				  patches (if (= vo vm)
 					    p                                ;; same value
 					    (changePatch fsm p pl))]  ;; different value
@@ -82,6 +86,7 @@
 	   childPatchEquals (fn [fso fsm p pl]
 			    (let [org (nth fso 2)
 				  mod (nth fsm 2)
+				  ;; iterate over the org and mod zippers (third field of fso and fsm)
 				  patches (findPatchesZipper org mod p pl) ]
 			      patches))
 	   getPatches (fn [so sm p pl pef]
@@ -99,80 +104,116 @@
 			       (recur nil (next sm) (insertPatch (first sm) p pl) pl pef))
 			     ;; check special case 'sm empty' (and so not empty)
 			     (if (not (seq sm))
-			       (recur (next so) nil (deletePatch (first so) p pl) pl pef)
+			       (let [nPatches (deletePatch (first so) p pl)]
+				 (recur (next so) nil nPatches pl pef))
 			       ;; both so and sm are non-empty
 			       (let [
-				     ;;_  (do (println  "so: " (ffirst so) " sm: " (ffirst sm)) (flush)) 
-;;				     keyCompare (compare (ffirst so) (ffirst sm)) ]
+;;				     _  (do (println  "so: " (ffirst so) " sm: " (ffirst sm))
+;;					    (println " full (first sm) "  (first sm) )
+;;					    (flush)) 
 				     keyCompare (compare (name (ffirst so)) (name (ffirst sm))) ]
 				     
 				 (if (= 0 keyCompare)
 				   ;; same key, so compare values
 				   (let [patches (pef (first so) (first sm) p pl)]
-				   ;; TO DO (move to higher order function
-				   ;; (let [vo (second (first so))
-				   ;; 	 vm (second (first sm))
-				   ;; 	 patches (if (= vo vm)
-				   ;; 		   p                                ;; same value
-				   ;; 		   (changePatch (first sm) p pl))]  ;; different value
-				     ;; end higher order that updated the patches
 				     (recur (next so) (next sm) patches pl pef))
 				   ;; different keys, so progress the right one
 				   (if (> keyCompare 0)   ;; so > sm
 				     (recur so (next sm) (insertPatch (first sm) p pl) pl pef)
-				     (recur (next so) sm (deletePatch (first so) p pl) pl pef)))))))
+				     (let [nPatches (deletePatch (first so) p pl)]
+				       (recur (next so) sm nPatches pl pef))))))))
 	   getSortChildren (fn [zipper]
 			     (loop [child   (zip/down zipper)
 				    children [] ]
-			       (if (not (nil? child))
+			       (if (and (not (nil? child))
+					(not (nil? (zip/node child))))
 				 (let [jKey (jsonKey child)
 				       childNode (zip/node child)
-				       element [jKey childNode child] ] 
-				   (recur (zip/right child) (conj children element))) 
+				       element [jKey childNode child] ]
+				   (recur (zip/right child) (conj children element)))
+				 ;; vectors are sorted by the index value, maps on the key value
 				 (sort-by first children))))
-	   insertRestVect (fn [pat mod]
-			    (if (nil? mod)
-			      pat
-			      (let [node (zip/node mod)
-				    rec  [(jsonKey node) node] ]
-				  (recur (insertPatch rec patches parPath) (zip/right node))))
-			    )]
+	   getSortVector (fn [zipper]
+			     (loop [child   (zip/down zipper)
+				    children [] ]
+			       (if (and (not (nil? child))
+					(not (nil? (zip/node child))))
+				 (let [jKey (jsonKey child)
+				       childNode (zip/node child)
+				       element [jKey childNode child] ]
+				   (recur (zip/right child) (conj children element)))
+				 ;; vectors are sorted by the index value, maps on the key value
+				 (sort-by first children))))
+	   ;; insertRestVect (fn [pat mod]
+	   ;; 		    (if (nil? mod)
+	   ;; 		      pat
+	   ;; 		      (let [node (zip/node mod)
+	   ;; 			    _   (println " EXPECTING ERROR")
+	   ;; 			    rec  [(jsonKey mod) node] ]   
+	   ;; 			  (recur (insertPatch rec patches parPath) (zip/right node))))
+	   ;; 		    )
+	   ]
        (if (and (nil? orgNode) (nil? modNode))  ;; both nil, so we are ready
-	 patches   
+	 patches
 	 (if (and (not (nil? orgNode)) (nil? modNode)) ;; (mod nil, so delete next value of org)
-	   (findPatchesZipper (zip/right org) mod  (deletePatch nil patches path) parPath)
+	   ;; (let [nPatches  (deletePatch [(jsonKey org)] patches path)
+	   ;; 	 nOrg     (zip/right org)
+	   ;; 	 _        (do (println " nOrg" nOrg)
+	   ;; 		      (println " mod " mod)
+	   ;; 		      (println "length of new patchlist = " (count nPatches))
+	   ;; 		      (flush))]
+	   ;; 				;(findPatchesZipper (zip/right org) mod nPatches  parPath)
+	     patches   ;; delete of patches happens in previous recursion  ??
 	   (if (nil? orgNode)   ;; org is nil (and mod is not nil) so insert a value
-	     (let [rec  [(jsonKey modNode) modNode] ]
+	     (let [rec  [(jsonKey mod) modNode] ]
 	       (findPatchesZipper org (zip/right mod) (insertPatch rec patches parPath) parPath))
 	     (if (and (map? orgNode)  ;; Both are compound values (map or vector!!)
 		      (map? modNode))
-	       ;; both items are of a compound type
-	       ;; process the basic keys   (will be empty list for a vector)
-	       (let [sortOrg (getSortKvs orgNode)
-		     sortMod (getSortKvs modNode)
-		     ;; _   (println "printing sorted org and mod kvs")
-		     ;; _   (pprint sortOrg)
-		     ;; _   (pprint sortMod)
-		     patches (getPatches sortOrg sortMod patches path kvsPatchEquals)]
-		 ;; and process the compound keys  (the ':jsonChildren')
-		 (let [sortOrgChild (getSortChildren org)
-		       sortModChild (getSortChildren mod)
-		       ;; _  (do
-		       ;; 	    (println "sorted org children") (pprint sortOrgChild)
-		       ;; 	    (println "sorted mod children") (pprint sortModChild)
-		       ;; 	    )
-		       patches (getPatches sortOrgChild sortModChild patches path childPatchEquals)]
-		   (println "The patches are: ")
-		   (pprint patches)
-		   patches))
+	       ;; both nodes are of a compound type (check whether same type)
+	       (if (= (jsonType org) (jsonType mod)) 
+		 ;; 
+		 ;; Both nodes are of same type (both vector or both map;
+		 (if (= (jsonType org) jsonTypeMap)
+		   ;; Both of type hashmap
+		   ;; Thus: Process the basic keys   (will be empty list for a vector)   ...
+		   (let [sortOrg (getSortKvs orgNode)
+			 sortMod (getSortKvs modNode)
+			 patches (getPatches sortOrg sortMod patches path kvsPatchEquals)]
+		     ;; ... and next process the compound keys  (stored in ':jsonChildren')
+		     (let [sortOrgChild (getSortChildren org)
+			   sortModChild (getSortChildren mod)
+			   ;; _  (do (println "sortModChild heeft " (count sortModChild) " elements.")
+			   ;; 	(pprint sortModChild) (flush))
+			   patches (getPatches sortOrgChild sortModChild patches path childPatchEquals)]
+		       ;; (println "The patches are: ")
+		       ;; (pprint patches)
+		       patches))
+		   ;;  else Both of type vector
+		   (let [sortOrgChild (getSortVector org)
+			 sortModChild (getSortVector mod)]
+		     (getPatches sortOrgChild sortModChild patches path childPatchEquals)))
+		 ;; both compound nodes are of a different type (apply change);
+		 ;; Thus: insert a change patch and return
+		 (let [rec  [(jsonKey mod) modNode] ]  ;; could be a deletion OR a change (how to choose??)
+		   (changePatch rec patches parPath)))
+	       ;; else-part: at least one of the nodes is not of a compound type
 	       (if (or (map? orgNode)  
 		       (map? modNode))
 		 ;; One node of compound type, other of basic type.
 		 ;; assume deletion (of a vector element) from the original (here we only support appends to vector)
-		 (findPatchesZipper (zip/right org) mod (deletePatch nil patches path) parPath)
+		 (findPatchesZipper (zip/right org) mod (deletePatch [(jsonKey orgNode)] patches path) parPath)
 		 (if (= (str orgNode) (str modNode))  
 		   patches  ;; both basic types are equal, so we're ready on this path
-		   (let [rec  [(jsonKey modNode) modNode] ]  ;; could be a deletion OR a change (how to choose??)
+		   (let [
+			 ;; _   (do
+			 ;;       (print "orgNode = ")
+			 ;;       (pprint orgNode)
+			 ;;       (print "modNode = ")
+			 ;;       (pprint modNode)
+			 ;;       (flush)
+			 ;;       (pprint (jsonKey mod))
+			 ;;       (flush))
+			 rec  [(jsonKey mod) modNode] ]  ;; could be a deletion OR a change (assume no inserts on vector)
 		     (findPatchesZipper (zip/right org) (zip/right mod) (changePatch rec patches parPath) parPath)))))))))))
 
 (defn findPatchesJson
