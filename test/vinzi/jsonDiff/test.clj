@@ -401,8 +401,9 @@
 
 (def mod5h (jsonZipper [2]))
 
-(def patch5h [(Patch. ["/"] actChange "[0]" 2)
-	      (Patch. ["/"] actDelete "[1]" nil)])
+;; old version 
+;;(def patch5h [(Patch. ["/"] actChange "[0]" 2)   (Patch. ["/"] actDelete "[1]" nil)])
+(def patch5h [(Patch. ["/"] actDelete "[0]" nil)])
 
 (def msg5h "delete first field of vector")
 
@@ -428,7 +429,38 @@
 (def patch5k [(Patch. ["/"] actDelete "[0]" nil)
 	      (Patch. ["/"] actDelete "[1]" nil)])
 
-(def msg5k "delete last field of vector")
+(def msg5k "delete all fields of vector")
+
+(def org5lmn (jsonZipper [1
+			 2
+			 3
+			 4
+			 5]))
+
+(def mod5l (jsonZipper [1 5]))
+
+(def patch5l [(Patch. ["/"] actDelete "[1]" nil)
+	      (Patch. ["/"] actDelete "[1]" nil)
+	      (Patch. ["/"] actDelete "[1]" nil)])
+
+(def msg5l "delete fields at position 2-4")
+
+
+(def mod5m (jsonZipper [1 3 5]))
+
+(def patch5m [(Patch. ["/"] actDelete "[1]" nil)
+	      (Patch. ["/"] actDelete "[2]" nil)])
+
+(def msg5m "delete fields at position 2 and 4")
+
+(def mod5n (jsonZipper [1 "changed" 5]))
+
+(def patch5n [(Patch. ["/"] actChange "[1]" "changed")
+	      (Patch. ["/"] actDelete "[2]"  nil)
+	      (Patch. ["/"] actDelete "[2]" nil)])
+
+(def msg5n "delete fields at position 2-4 and modified position 3")
+
 
 
 ;(def {:a 1, :cc [1 2 3], :b "test-string"}
@@ -445,6 +477,8 @@
   (theTest patch5h org5hij mod5h  msg5h)
   (theTest patch5i org5hij mod5i  msg5i)
   (theTest patch5j org5hij mod5j  msg5j)
-  (theTest patch5k org5hij mod5k  msg5k)
+  (theTest patch5l org5lmn mod5l  msg5l)
+  (theTest patch5m org5lmn mod5m  msg5m)
+  (theTest patch5n org5lmn mod5n  msg5n)
   )
 
