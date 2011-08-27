@@ -39,8 +39,10 @@
 (defmacro dbgm1 [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
 
 (defmacro dbg [x] x)
+(defmacro dbg1 [x] x)
 (defmacro dbgp [x] x)
 (defmacro dbgm [m x] x)
+(defmacro dbgm1 [m x] x)
 
 ;;;; end debugger
 
@@ -99,6 +101,12 @@
 		  (conj path (jsonKey org)))
 	   orgNode (if (nil? org) nil (zip/node org))
 	   modNode (if (nil? mod) nil (zip/node mod))
+	   parIsVect (fn [z] (and (dbg1 z)
+				  (when-let [par (zip/up z)]
+				    (= (jsonType par) jsonTypeVector))))
+	   ;; if the direct parent is a vector than it should perform nog right-recur
+	   ;; (is handled by getVectorPatches itself)
+	   rightRecur (not (or (dbg1 (parIsVect org)) (dbg1 (parIsVect mod))))  
 	   getSortKvs  (fn [data]
 			 (let [kvs (map vector (keys data) (vals data))
 			       kvs (filter #(not= (first %) :jsonChildren) kvs)  ;; exclude the :jsonChildren
@@ -309,7 +317,10 @@
 	     (dbgm1 "EXIT-2" patches)   ;; RETURN: delete of patches always happens in previous recursion  ??
 	   (if (nil? orgNode)   ;; org is nil (and mod is not nil) so insert a value
 	     (let [rec  [(jsonKey mod) modNode] ]
-	       (dbgm1 "EXIT-3" (findPatchesZipper org (dbgm1 "ENTER-3 mod" (zip/right mod)) (insertPatch rec patches parPath) parPath quitOnPatch)))
+	       (dbgm1 "EXIT-3" (let [newPatches (insertPatch rec patches parPath)]
+				 (if rightRecur
+				   (findPatchesZipper org (zip/right mod) newPatches parPath quitOnPatch)
+		      newPatches))))
 	     (if (and (map? orgNode)  ;; Both are compound values (map or vector!!)
 		      (map? modNode))
 	       ;; both nodes are of a compound type (check whether same type)
@@ -350,23 +361,20 @@
 		       (map? modNode))
 		 ;; One node of compound type, other of basic type.
 		 ;; assume deletion (of a vector element) from the original (here we only support appends to vector)
-		 (dbgm1 "EXIT-6" (findPatchesZipper (zip/right org) mod
-				    (deletePatch [(jsonKey org)] patches path) parPath quitOnPatch))
+		 (dbgm1 "EXIT-6" (let [newPatches (deletePatch [(jsonKey org)] patches path)]
+				   (if rightRecur
+				     (findPatchesZipper (zip/right org) mod newPatches parPath quitOnPatch)
+				     newPatches)))
 		 (if (= (str orgNode) (str modNode))  
 		   (dbgm1 "EXIT-7" patches)  ;; both basic types are equal. RETURN
-		   (let [
-			 ;; _   (do
-			 ;;       (print "orgNode = ")
-			 ;;       (pprint orgNode)
-			 ;;       (print "modNode = ")
-			 ;;       (pprint modNode)
-			 ;;       (flush)
-			 ;;       (pprint (jsonKey mod))
-			 ;;       (flush))
-			 ;; NOTE: check whether we can still end up here for a vector!!
-			 rec  [(jsonKey mod) modNode] ]  ;; could be a deletion OR a change (assume no inserts on vector)
-		     (dbgm1 "EXIT-8" (findPatchesZipper (zip/right org) (zip/right mod)
-					(dbgm1 "ENTER-8 (change)" (changePatch rec patches parPath)) parPath quitOnPatch))))))))))))
+		   (let [;; NOTE: check whether we can still end up here for a vector!!
+			 ;; could be a deletion OR a change (assume no inserts on vector)
+			 rec  [(jsonKey mod) modNode]
+ 			 newPatches (changePatch rec patches parPath)]
+		     (if rightRecur
+		       (dbgm1 "EXIT-8" (findPatchesZipper (zip/right org) (zip/right mod)
+							  newPatches parPath quitOnPatch))
+			      newPatches )))))))))))
 
 (defn findPatchesJson
   "Find the patches to translate json-object 'org' to 'mod'. Wrapper that calls 'findPatchesZipper'
