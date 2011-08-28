@@ -6,8 +6,11 @@
 ;;	      [duck-streams :as ds :only [writer]]
 	      ;;	      [sql :as sql]
 ;;	      ])
-  (:use [vinzi.jsonZip :only [jsonZipper]])
-  (:use [clojure.test]))
+  (:use [vinzi.jsonZip :only [jsonZipper jsonRoot jsonKey]])
+  (:use [clojure.test])
+  (:use [clojure.walk])
+  (:require  [clojure  [zip :as zip]])
+  )
 
 
 (defn- strComp [x y]
@@ -15,7 +18,40 @@
   ;; (pprint x)
   ;; (print "     with y = ")
   ;; (pprint y)
-  (= 0 (compare (str x) (str y))))
+  (compare (str x) (str y)))
+
+(defn- sort-map [m]
+  (into (sorted-map-by strComp) m))
+
+(defn- sort-set [s]
+  (into (sorted-set-by strComp) s))
+
+(defn- s-form [f]
+  (if (map? f)
+    (sort-map f)
+    (if (set? f)
+      (sort-set f)
+      f)))
+
+(defn- sort-form [f]
+  (postwalk s-form f))
+
+
+(defn- canonicalZip [z]
+  (str (s-form (jsonRoot z))))
+
+(defn compareZip [x y]
+  (comp (canonicalZip x) (canonicalZip y)))
+
+;;;;;;;;;;;;
+;; macro's for comparison
+;;
+
+(defmacro discoverTest [patch org mod msg]
+  `(is (strComp ~patch (findPatchesZipper ~org ~mod))  (str " DISCOVER-TEST:" ~msg)))
+
+(defmacro applyTest [patch org mod msg]
+  `(is (compareZip ~mod (applyPatchesZipper ~org ~patch))  (str " APPLY-TEST:" ~msg)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -100,21 +136,26 @@
 (def msg1h " delete field at last position of map")
 
 
-(defmacro theTest [patch org mod msg]
-  `(is (strComp ~patch (findPatchesZipper ~org ~mod))  (str " DISCOVER-TEST:" ~msg)))
-
 (deftest test1 ;; 
-  (theTest patch1a org1 mod1a  msg1a)
-  (theTest patch1b org1 mod1b  msg1b)
-  (theTest patch1c org1 mod1c  msg1c)
-  (theTest patch1d org1 mod1d  msg1d)
-  (theTest patch1e org1 mod1e  msg1e)
-  (theTest patch1f org1 mod1f  msg1f)
-  (theTest patch1g org1 mod1g  msg1g)
-  (theTest patch1h org1 mod1h  msg1h)
+  (discoverTest patch1a org1 mod1a  msg1a)
+  (discoverTest patch1b org1 mod1b  msg1b)
+  (discoverTest patch1c org1 mod1c  msg1c)
+  (discoverTest patch1d org1 mod1d  msg1d)
+  (discoverTest patch1e org1 mod1e  msg1e)
+  (discoverTest patch1f org1 mod1f  msg1f)
+  (discoverTest patch1g org1 mod1g  msg1g)
+  (discoverTest patch1h org1 mod1h  msg1h)
   )
 
 (deftest test1reverse   ;; apply patches and see whether you get the original
+  (applyTest patch1a org1 mod1a  msg1a)
+  (applyTest patch1b org1 mod1b  msg1b)
+  (applyTest patch1c org1 mod1c  msg1c)
+  (applyTest patch1d org1 mod1d  msg1d)
+  (applyTest patch1e org1 mod1e  msg1e)
+  (applyTest patch1f org1 mod1f  msg1f)
+  (applyTest patch1g org1 mod1g  msg1g)
+  (applyTest patch1h org1 mod1h  msg1h)
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -163,11 +204,18 @@
 
 
 (deftest test2 ;; 
-  (theTest patch2a org2 mod2a  msg2a)
-  (theTest patch2b org2 mod2b  msg2b)
-  (theTest patch2c org2 mod2c  msg2c)
+  (discoverTest patch2a org2 mod2a  msg2a)
+  (discoverTest patch2b org2 mod2b  msg2b)
+  (discoverTest patch2c org2 mod2c  msg2c)
   )
 
+;; (deftest test2reverse ;; 
+;;   (applyTest patch2a org2 mod2a  msg2a)
+;;   (applyTest patch2b org2 mod2b  msg2b)
+;;   (applyTest patch2c org2 mod2c  msg2c)
+;;   )
+
+(println "test2reverse temporarily excluded")
 
 
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -216,9 +264,15 @@
 
 
 (deftest test3 ;; 
-  (theTest patch3a org3 mod3a  msg3a)
-  (theTest patch3b org3 mod3b  msg3b)
-  (theTest patch3c org3 mod3c  msg3c)
+  (discoverTest patch3a org3 mod3a  msg3a)
+  (discoverTest patch3b org3 mod3b  msg3b)
+  (discoverTest patch3c org3 mod3c  msg3c)
+  )
+
+(deftest test3reverse ;; 
+  (discoverTest patch3a org3 mod3a  msg3a)
+  (discoverTest patch3b org3 mod3b  msg3b)
+  (discoverTest patch3c org3 mod3c  msg3c)
   )
 
 ;;;;;;;;;;;;;;;;
@@ -333,17 +387,26 @@
 
 
 (deftest test4 ;; 
-  (theTest patch4a org4 mod4a  msg4a)
-  (theTest patch4b org4 mod4b  msg4b)
-  (theTest patch4c org4 mod4c  msg4c)
-  (theTest patch4d org4d mod4d  msg4d)
-  (theTest patch4e org4e mod4e  msg4e)
-  (theTest patch4f org4f mod4f  msg4f)
+  (discoverTest patch4a org4 mod4a  msg4a)
+  (discoverTest patch4b org4 mod4b  msg4b)
+  (discoverTest patch4c org4 mod4c  msg4c)
+  (discoverTest patch4d org4d mod4d  msg4d)
+  (discoverTest patch4e org4e mod4e  msg4e)
+  (discoverTest patch4f org4f mod4f  msg4f)
+  )
+
+(deftest test4reverse ;; 
+  (applyTest patch4a org4 mod4a  msg4a)
+  (applyTest patch4b org4 mod4b  msg4b)
+  (applyTest patch4c org4 mod4c  msg4c)
+  (applyTest patch4d org4d mod4d  msg4d)
+  (applyTest patch4e org4e mod4e  msg4e)
+  (applyTest patch4f org4f mod4f  msg4f)
   )
 
 
 ;;;;;;;;;;;;;
-;; test 5: some more tests on records containing vectors.
+;; test 5: all tests are looking for an empty set of patches (no ghost-pathces)
 ;;
 
 ;; test 5a
@@ -396,89 +459,104 @@
 (def msg5g " compare unmodified map-vec (vec in tail position)")
 
 
-(def org5hij (jsonZipper [1
+(deftest test5 ;; 
+  (discoverTest patch5empty om5a om5a  msg5a)
+  (discoverTest patch5empty om5b om5b  msg5b)
+  (discoverTest patch5empty om5c om5c  msg5c)
+  (discoverTest patch5empty om5d om5d  msg5d)
+  (discoverTest patch5empty om5e om5e  msg5e)
+  (discoverTest patch5empty om5f om5f  msg5f)
+  (discoverTest patch5empty om5f1 om5f2  msg5f)
+  (discoverTest patch5empty om5g om5g  msg5g)
+  )
+
+
+;;;;;;;;;;;;;
+;; test 6: Test-suite for detection of deletions in vectors
+;;  (detecting a shift instead of set of changes to subsequent elements of the vector.)
+;;
+
+
+(def org6abcd (jsonZipper [1
 			2]))
 
-(def mod5h (jsonZipper [2]))
+(def mod6a (jsonZipper [2]))
 
-;; old version 
-;;(def patch5h [(Patch. ["/"] actChange "[0]" 2)   (Patch. ["/"] actDelete "[1]" nil)])
-(def patch5h [(Patch. ["/"] actDelete "[0]" nil)])
+(def patch6a [(Patch. ["/"] actDelete "[0]" nil)])
 
-(def msg5h "delete first field of vector")
+(def msg6a "delete first field of vector")
 
 
-(def mod5i (jsonZipper [1]))
+(def mod6b (jsonZipper [1]))
 
-(def patch5i [
+(def patch6b [
 	      (Patch. ["/"] actDelete "[1]" nil)])
 
-(def msg5i "delete last field of vector")
+(def msg6b "delete last field of vector")
 
 
-(def mod5j (jsonZipper [1, 2, 3]))
+(def mod6c (jsonZipper [1, 2, 3]))
 
-(def patch5j [
+(def patch6c [
 	      (Patch. ["/"] actInsert "[2]" 3)])
 
-(def msg5j "append (basic) value at end of vector")
+(def msg6c "append (basic) value at end of vector")
 
 
-(def mod5k (jsonZipper []))
+(def mod6d (jsonZipper []))
 
-(def patch5k [(Patch. ["/"] actDelete "[0]" nil)
+(def patch6d [(Patch. ["/"] actDelete "[0]" nil)
 	      (Patch. ["/"] actDelete "[1]" nil)])
 
-(def msg5k "delete all fields of vector")
+(def msg6d "delete all fields of vector")
 
-(def org5lmn (jsonZipper [1
+(def org6efg (jsonZipper [1
 			 2
 			 3
 			 4
 			 5]))
 
-(def mod5l (jsonZipper [1 5]))
+(def mod6e (jsonZipper [1 5]))
 
-(def patch5l [(Patch. ["/"] actDelete "[1]" nil)
+(def patch6e [(Patch. ["/"] actDelete "[1]" nil)
 	      (Patch. ["/"] actDelete "[1]" nil)
 	      (Patch. ["/"] actDelete "[1]" nil)])
 
-(def msg5l "delete fields at position 2-4")
+(def msg6e "delete fields at position 2-4")
 
 
-(def mod5m (jsonZipper [1 3 5]))
+(def mod6f (jsonZipper [1 3 5]))
 
-(def patch5m [(Patch. ["/"] actDelete "[1]" nil)
+(def patch6f [(Patch. ["/"] actDelete "[1]" nil)
 	      (Patch. ["/"] actDelete "[2]" nil)])
 
-(def msg5m "delete fields at position 2 and 4")
+(def msg6f "delete fields at position 2 and 4")
 
-(def mod5n (jsonZipper [1 "changed" 5]))
+(def mod6g (jsonZipper [1 "changed" 5]))
 
-(def patch5n [(Patch. ["/"] actChange "[1]" "changed")
+(def patch6g [(Patch. ["/"] actChange "[1]" "changed")
 	      (Patch. ["/"] actDelete "[2]"  nil)
 	      (Patch. ["/"] actDelete "[2]" nil)])
 
-(def msg5n "delete fields at position 2-4 and modified position 3")
+(def msg6g "delete fields at position 2-4 and modified position 3")
 
+(deftest test6 ;; 
+  (discoverTest patch6a org6abcd mod6a  msg6a)
+  (discoverTest patch6b org6abcd mod6b  msg6b)
+  (discoverTest patch6c org6abcd mod6c  msg6c)
+  (discoverTest patch6d org6abcd mod6d  msg6d)
+  (discoverTest patch6e org6efg mod6e  msg6e)
+  (discoverTest patch6f org6efg mod6f  msg6f)
+  (discoverTest patch6g org6efg mod6g  msg6g)
+  )
 
-
-;(def {:a 1, :cc [1 2 3], :b "test-string"}
-
-(deftest test5 ;; 
-  (theTest patch5empty om5a om5a  msg5a)
-  (theTest patch5empty om5b om5b  msg5b)
-  (theTest patch5empty om5c om5c  msg5c)
-  (theTest patch5empty om5d om5d  msg5d)
-  (theTest patch5empty om5e om5e  msg5e)
-  (theTest patch5empty om5f om5f  msg5f)
-  (theTest patch5empty om5f1 om5f2  msg5f)
-  (theTest patch5empty om5g om5g  msg5g)
-  (theTest patch5h org5hij mod5h  msg5h)
-  (theTest patch5i org5hij mod5i  msg5i)
-  (theTest patch5j org5hij mod5j  msg5j)
-  (theTest patch5l org5lmn mod5l  msg5l)
-  (theTest patch5m org5lmn mod5m  msg5m)
-  (theTest patch5n org5lmn mod5n  msg5n)
+(deftest test6 ;; 
+  (applyTest patch6a org6abcd mod6a  msg6a)
+  (applyTest patch6b org6abcd mod6b  msg6b)
+  (applyTest patch6c org6abcd mod6c  msg6c)
+  (applyTest patch6d org6abcd mod6d  msg6d)
+  (applyTest patch6e org6efg mod6e  msg6e)
+  (applyTest patch6f org6efg mod6f  msg6f)
+  (applyTest patch6g org6efg mod6g  msg6g)
   )
 

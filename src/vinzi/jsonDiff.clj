@@ -200,7 +200,6 @@
 				   ;; repair a single key
 				   translateKey (fn [key]
 						  (when key
-						    (println "original key = " key)
 						    (str "[" (- (Integer/parseInt
 								 (subs key 1 (dec (count key)))) numDel) "]")))
 				   ;; repair a single patch
@@ -258,11 +257,6 @@
 									   (iterate #(deletePatch o % pl) [])))
 						    ;; and continue at succesor 'no' in org
 						    newPatches (getVectorPatches (rest no) (rest sm) [] pl)]
-						(print "patches where: ") (pprint p)
-						(println "numDel : " numDel)
-						(print "delPatches are: ") (pprint delPatches)
-						(print "further patches before renum: ") (pprint newPatches)
-						(flush)
 						(dbg1 (mergePatches p (renumNewPatches delPatches newPatches pl numDel))))
 					      ;; no match on current 'mz'. Test whether candidate matches on 'nm'
 					      (let [nmz (if (empty? nm) nil (nth (first nm) 2))]
@@ -272,31 +266,9 @@
 						  (recur (next no) (next nm) (inc numDel))
 						  ;; else part, cand matches on counterpart in mod.
 						  ;; So accept patches and perform a fn-recur
-						  (do
-						    (print "newPatches --> ") (pprint newPatches)
-						    (print " p --> ") (pprint p) (flush)
 						    (getVectorPatches (rest so) (rest sm)
-							   (mergePatches p newPatches) pl)))))))))))))
+							   (mergePatches p newPatches) pl))))))))))))
 
-	   ;; getSortVector (fn [zipper]
-	   ;; 		     (loop [child   (zip/down zipper)
-	   ;; 			    children [] ]
-	   ;; 		       (if (and (not (nil? child))
-	   ;; 				(not (nil? (zip/node child))))
-	   ;; 			 (let [jKey (jsonKey child)
-	   ;; 			       childNode (zip/node child)
-	   ;; 			       element [jKey childNode child] ]
-	   ;; 			   (recur (zip/right child) (conj children element)))
-	   ;; 			 ;; vectors are sorted by the index value, maps on the key value
-	   ;; 			 (sort-by first children))))
-	   ;; insertRestVect (fn [pat mod]
-	   ;; 		    (if (nil? mod)
-	   ;; 		      pat
-	   ;; 		      (let [node (zip/node mod)
-	   ;; 			    _   (println " EXPECTING ERROR")
-	   ;; 			    rec  [(jsonKey mod) node] ]   
-	   ;; 			  (recur (insertPatch rec patches parPath) (zip/right node))))
-	   ;; 		    )
 	   ]
        (dbgp orgNode)
        (dbgp modNode)
@@ -348,8 +320,6 @@
 				 (assert (= (count modNode) 1)))
 			 orgChild (getChildren org)
 			 modChild (getChildren mod)
-			 _   (println)
-			 _   (println "\n\nENTER getVectorPatches")
 			 newPatches (getVectorPatches orgChild modChild [] path)]
 		     (dbgm1 "EXIT-5" (mergePatches patches newPatches))))  ;; merge the patches and RETURN
 		 ;; both compound nodes are of a different type (apply change);
@@ -376,6 +346,12 @@
 							  newPatches parPath quitOnPatch))
 			      newPatches )))))))))))
 
+(defn reportError
+  ([msg] (reportError msg nil))
+  ([msg ret]
+     (println "ERROR: " msg)
+     ret))
+
 (defn findPatchesJson
   "Find the patches to translate json-object 'org' to 'mod'. Wrapper that calls 'findPatchesZipper'
   (See 'findPatchesZipper' for details)."
@@ -384,52 +360,124 @@
 	modZip (jsonZipper mod)]
     (findPatchesZipper orgZip modZip)))
 
+(defn dissoc-in
+  "Dissociates an entry from a nested associative structure returning a new
+  nested structure. keys is a sequence of keys. Any empty maps that result
+  will not be present in the new structure."
+  [m [k & ks :as keys]]
+  (if ks
+    (if-let [nextmap (get m k)]
+      (let [newmap (dissoc-in nextmap ks)]
+        (if (seq newmap)
+          (assoc m k newmap)
+          (dissoc m k)))
+      m)
+    (dissoc m k)))
+
+
+
+
 (defn applyPatchesZipper
   "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper"
   [org patches]
-  )
+  (let [applyDelete (fn [loc pathList key value]
+		      (println "Delete")
+		      (assert (not value))
+		      (if-let [newLoc (deleteItem loc pathList key)]
+			newLoc
+			loc))
+	applyInsert (fn [loc pathList key value]
+		      (println "Insert")
+		      (if-let [newLoc (insertItem loc pathList key value)]
+			       newLoc
+			       loc))
+	applyChange (fn [loc pathList key value]
+		      (println "Change")
+		      (if-let [newLoc (replaceItem loc pathList key value)]
+			       newLoc
+			       loc))
+	actMap {actDelete applyDelete
+		actInsert applyInsert
+		actChange applyChange}]
+    (if (seq patches)
+      (let [{:keys [pathList action key value]} (first patches)
+	    actionFunc (action actMap)
+	    mod (actionFunc org pathList key value)]
+	(recur mod (rest patches)))
+      org)))
+
 
 (defn applyPatchesJson
   "Applies the 'patches' to json-object 'org' and returns the modified object.
    Wrapper that calls 'applyPatchesZipper' (See 'applyPatchesZipper' for details)."
   [org patches]
-  (zip/root (applyPatchesZipper (jsonZipper org) patches)))
-
-;;;;; temp test
-
-(def o3data {:x {:a 1
-		   :b "test-string"}})
-
-(def o3 (jsonZipper o3data))
+  (zip/root (applyPatchesZipper (jsonZipper org) patches))
+;;  (applyPatchesObject org patches)
+  )
 
 
-;; test 3a
-(def m3a (jsonZipper
-	    {:x {:a 1
-	        :a1 {:x 1}
-	        :b "test-string"}}))
+;; (defn applyPatchesObject
+;;   "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper"
+;;   [org patches]
+;;   (let [
+;; 	getKey (fn [key]
+;; 		 (if (and (not= (type key) (type :a)) 
+;; 			  (= (first key) \[))
+;; 		   (Integer/parseInt (subs key 1 (dec (count key))))
+;; 		   key))
+;; 	getPathVect (fn getPathVect [pathList]
+;; 		      (let [head (first pathList)
+;; 			    tail (rest pathList)
+;; 			    gpv  (fn [cumm [k & ks]]
+;; 				   (if k
+;; 				     (recur (conj cumm (getKey k)) ks)
+;; 				     cumm))]
+			    
+;; 			(assert (= head "/"))
+;; 			(gpv [] tail)))
+;; 	pathExists  (fn [obj [k & ks]]
+;; 		      (print "check path for k=" k " and ks=" ks "    in obj=")
+;; 		      (pprint obj)
+;; 		      (if (nil? k)
+;; 			(do
+;; 			  (println "path found")
+;; 			  true)
+;; 			(when-let [newObj (get obj k)]
+;; 			  (println " get obj for k=" k) (flush)
+;; 			  (recur newObj ks))))
+;; 	applyDelete (fn [org pathList key value]
+;; 		      (println "Delete"))
+;; 	applyInsert (fn [org pathList key value]
+;; 		      (println "Insert")
+;; 		      (let [kvs (conj pathList (getKey key))]
+;; 			(if (pathExists org pathList)
+;; 			    (assoc-in org kvs value)
+;; 			    (do
+;; 			      (reportError (str "Could not change value at Path: " pathList
+;; 						"  insertPatch DISCARDED!!"))
+;; 			      org))))
+;; 	applyChange (fn [org pathList key value]
+;; 		      (println "Change")
+;; 		      (let [kvs (conj pathList (getKey key))]
+;; 			(if (pathExists org kvs)
+;; 			    (assoc-in org kvs value)
+;; 			    (do
+;; 			      (reportError (str "Could not change value at location: " kvs
+;; 						"  changePatch DISCARDED!!"))
+;; 			      org))))
+;; 	actMap {actDelete applyDelete
+;; 		actInsert applyInsert
+;; 		actChange applyChange}]
+;;     (if (seq patches)
+;;       (let [{:keys [pathList action key value]} (first patches)
+;; 	    actionFunc (action actMap)
+;; 	    pathVect (getPathVect pathList) 
+;; 	    mod (actionFunc org pathVect key value)]
+;; 	(println "action = " action)
+;; 	(println "actionFunc = " actionFunc)
+;; 	(flush)
+;; 	(recur mod (rest patches)))
+;;       org)))
 
-(def p3a [
-	     (Patch. ["/" :x] actInsert :a1 {:x 1} )])
 
-
-
-(def p4a [
-	     (Patch. ["/" "[1]"] actInsert :a1 {:x 1} )])
-;;(findPatchesZipper o3 m3a)
-
-(def o5n (jsonZipper [1
-			 2
-			 3
-			 4
-			 5]))
-
-(def m5n (jsonZipper [1 "changed" 5]))
-
-(def p5n [(Patch. ["/"] actChange "[1]" "changed")
-	      (Patch. ["/"] actDelete "[2]"  nil)
-	      (Patch. ["/"] actDelete "[2]" nil)])
-
-(def ms5n "delete fields at position 2-4 and modified position 3")
-
-(findPatchesZipper o5n m5n)
+;;(findPatchesZipper o5n m5n)
