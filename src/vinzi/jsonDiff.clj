@@ -77,11 +77,18 @@
     (assert false)
     (println "THIS SHOULD NEVER BE EXECUTED") (flush))))
 
+(defn reportError
+  ([msg] (reportError msg nil))
+  ([msg ret]
+     (println "ERROR: " msg)
+     ret))
 
-(defn subZip
-  "Creates a subtree of the current node of zipper. Used exclude the current left- and right neigbors from the tree."
-  [zipper]
-  (jsonZipper (zip/node zipper)))
+
+
+;; (defn subZip
+;;   "Creates a subtree of the current node of zipper. Used exclude the current left- and right neigbors from the tree."
+;;   [zipper]
+;;   (jsonZipper (zip/node zipper)))
 
 ;; core code
 
@@ -192,6 +199,10 @@
 				     (recur so (next sm) (insertPatch (first sm) p pl) pl pef)
 				     (let [nPatches (deletePatch (first so) p pl)]
 				       (recur (next so) sm nPatches pl pef))))))))
+	   getPatchesChildren (fn [org mod p pl]
+				    (let [sortOrgChild (dbg (getSortChildren org))
+					  sortModChild (dbg (getSortChildren mod))]
+				      (getPatches sortOrgChild sortModChild patches path childPatchEquals)))
 	   mergePatches    (fn [p nPatches] (vec (concat p nPatches)))
 	   renumNewPatches (fn [p nPatches pl numDel]
 			     ;; returns a new patchlist that combines p and nPatches
@@ -216,8 +227,8 @@
 						     :pathList nPath
 						     :key   nKey)))]
 			     (mergePatches p (map repairPatch nPatches))))
-	   getVectorPatches (fn getVectorPatches [so sm p pl]
-			      ;; getVectorPatches is used as keys in vectors are not stable as insertion
+	   getVectPat (fn getVectPat [so sm p pl]
+			      ;; getVectPat is used as keys in vectors are not stable as insertion
 			      ;; and deletion of elements will result in a shift of keys.
 			      ;; currently this function only supports detection of change, deletion and appends.
 			      ;;  (inserts are not supported)
@@ -239,14 +250,14 @@
 					newPatches (dbg1 (findPatchesZipper (dbg1 oz) (dbg1 mz) [] pl quitOnPatch))]
 				    (if (empty? newPatches)
 				      ;; fn-recur (no additional patches)
-				      (getVectorPatches  (rest so) (rest sm) p pl)
+				      (getVectPat  (rest so) (rest sm) p pl)
 				      ;; else: there are patches (accept patches or delete a serie of vector-elements? 
 				      (loop [no (next so)
 					     nm (next sm)
 					     numDel 1]
 					(if (empty? no)
 					  ;; no more candidates, so fn-recur without renumbering
-					  (getVectorPatches (rest so) (rest sm)
+					  (getVectPat (rest so) (rest sm)
 							    (mergePatches p newPatches) pl)
 					  ;; we have a new candidate for matching current 'mz'
 					  (let [cand  (nth (first no) 2)
@@ -256,7 +267,7 @@
 					      (let [delPatches (last (take (inc numDel)
 									   (iterate #(deletePatch o % pl) [])))
 						    ;; and continue at succesor 'no' in org
-						    newPatches (getVectorPatches (rest no) (rest sm) [] pl)]
+						    newPatches (getVectPat (rest no) (rest sm) [] pl)]
 						(dbg1 (mergePatches p (renumNewPatches delPatches newPatches pl numDel))))
 					      ;; no match on current 'mz'. Test whether candidate matches on 'nm'
 					      (let [nmz (if (empty? nm) nil (nth (first nm) 2))]
@@ -266,9 +277,24 @@
 						  (recur (next no) (next nm) (inc numDel))
 						  ;; else part, cand matches on counterpart in mod.
 						  ;; So accept patches and perform a fn-recur
-						    (getVectorPatches (rest so) (rest sm)
-							   (mergePatches p newPatches) pl))))))))))))
-
+						    (getVectPat (rest so) (rest sm)
+								      (mergePatches p newPatches) pl))))))))))))
+	   getVectorPatches (fn [org mod p pl]
+			      ;; determine whether vector is indexed by index or by Vector-id
+			      (let [orgId  (getVectId org)
+				    modId  (getVectId mod)]
+				(if (not= orgId modId)
+				  (reportError (format (str "The origing uses vector-id %s "
+							    "and the modified version uses %s.\n"
+							    "Can not process this substree !!" orgId modId)))
+				  (if orgId
+				    (getPatchesChildren org mod p pl)
+				    (let [_   (or (assert (= (jsonType org) jsonTypeVector))
+						  (assert (= (count orgNode) 1))
+						  (assert (= (count modNode) 1)))
+					  orgChild (getChildren org)
+					  modChild (getChildren mod)]
+				      (getVectPat orgChild modChild p pl))))))
 	   ]
        (dbgp orgNode)
        (dbgp modNode)
@@ -306,22 +332,9 @@
 			 sortMod (getSortKvs modNode)
 			 patches (getPatches sortOrg sortMod patches path kvsPatchEquals)]
 		     ;; ... and next process the compound keys  (stored in ':jsonChildren')
-		     (let [sortOrgChild (dbg (getSortChildren org))
-			   sortModChild (dbg (getSortChildren mod))
-			   ;; _  (do (println "sortModChild heeft " (count sortModChild) " elements.")
-			   ;; 	(pprint sortModChild) (flush))
-			   patches (getPatches sortOrgChild sortModChild patches path childPatchEquals)]
-		       ;; (println "The patches are: ")
-		       ;; (pprint patches)
-		       (dbgm1 "EXIT-4" patches)))
+		     (dbgm1 "EXIT-4" (getPatchesChildren org mod patches path)))
 		   ;;  else 'orgNode' and 'modNode' are of type vector
-		   (let [_   (or (assert (= (jsonType org) jsonTypeVector))
-				 (assert (= (count orgNode) 1))
-				 (assert (= (count modNode) 1)))
-			 orgChild (getChildren org)
-			 modChild (getChildren mod)
-			 newPatches (getVectorPatches orgChild modChild [] path)]
-		     (dbgm1 "EXIT-5" (mergePatches patches newPatches))))  ;; merge the patches and RETURN
+		   (dbgm1 "EXIT-5" (getVectorPatches org mod patches path)))
 		 ;; both compound nodes are of a different type (apply change);
 		 ;; Thus: insert a change patch and return
 		 (let [rec  [(jsonKey mod) modNode] ]  
@@ -346,12 +359,6 @@
 							  newPatches parPath quitOnPatch))
 			      newPatches )))))))))))
 
-(defn reportError
-  ([msg] (reportError msg nil))
-  ([msg ret]
-     (println "ERROR: " msg)
-     ret))
-
 (defn findPatchesJson
   "Find the patches to translate json-object 'org' to 'mod'. Wrapper that calls 'findPatchesZipper'
   (See 'findPatchesZipper' for details)."
@@ -360,39 +367,21 @@
 	modZip (jsonZipper mod)]
     (findPatchesZipper orgZip modZip)))
 
-(defn dissoc-in
-  "Dissociates an entry from a nested associative structure returning a new
-  nested structure. keys is a sequence of keys. Any empty maps that result
-  will not be present in the new structure."
-  [m [k & ks :as keys]]
-  (if ks
-    (if-let [nextmap (get m k)]
-      (let [newmap (dissoc-in nextmap ks)]
-        (if (seq newmap)
-          (assoc m k newmap)
-          (dissoc m k)))
-      m)
-    (dissoc m k)))
-
-
 
 
 (defn applyPatchesZipper
   "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper"
   [org patches]
   (let [applyDelete (fn [loc pathList key value]
-		      (println "Delete")
 		      (assert (not value))
-		      (if-let [newLoc (deleteItem loc pathList key)]
+		      (if-let [newLoc (removeItem loc pathList key)]
 			newLoc
 			loc))
 	applyInsert (fn [loc pathList key value]
-		      (println "Insert")
 		      (if-let [newLoc (insertItem loc pathList key value)]
 			       newLoc
 			       loc))
 	applyChange (fn [loc pathList key value]
-		      (println "Change")
 		      (if-let [newLoc (replaceItem loc pathList key value)]
 			       newLoc
 			       loc))
@@ -412,8 +401,24 @@
    Wrapper that calls 'applyPatchesZipper' (See 'applyPatchesZipper' for details)."
   [org patches]
   (zip/root (applyPatchesZipper (jsonZipper org) patches))
-;;  (applyPatchesObject org patches)
   )
+
+
+
+;; (defn dissoc-in
+;;   "Dissociates an entry from a nested associative structure returning a new
+;;   nested structure. keys is a sequence of keys. Any empty maps that result
+;;   will not be present in the new structure."
+;;   [m [k & ks :as keys]]
+;;   (if ks
+;;     (if-let [nextmap (get m k)]
+;;       (let [newmap (dissoc-in nextmap ks)]
+;;         (if (seq newmap)
+;;           (assoc m k newmap)
+;;           (dissoc m k)))
+;;       m)
+;;     (dissoc m k)))
+
 
 
 ;; (defn applyPatchesObject

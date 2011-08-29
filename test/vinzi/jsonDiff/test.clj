@@ -9,6 +9,7 @@
   (:use [vinzi.jsonZip :only [jsonZipper jsonRoot jsonKey]])
   (:use [clojure.test])
   (:use [clojure.walk])
+  (:use [clojure.pprint])
   (:require  [clojure  [zip :as zip]])
   )
 
@@ -26,22 +27,31 @@
 (defn- sort-set [s]
   (into (sorted-set-by strComp) s))
 
-(defn- s-form [f]
+(defn- sForm [f]
   (if (map? f)
     (sort-map f)
     (if (set? f)
       (sort-set f)
       f)))
 
-(defn- sort-form [f]
-  (postwalk s-form f))
+(defn- sortForm [f]
+  (postwalk sForm f))
 
 
 (defn- canonicalZip [z]
-  (str (s-form (jsonRoot z))))
+" Extract the json-object and bring it in a canonical form"
+  (str (sForm (jsonRoot z))))
 
 (defn compareZip [x y]
-  (comp (canonicalZip x) (canonicalZip y)))
+  (let [sx  (canonicalZip x)
+	sy  (canonicalZip y)
+	res (strComp sx sy)]
+    (when (not= res 0)
+      (println  "equalForms:   " res)
+      (print "with x: ") (pprint sx)
+      (print "with y: ") (pprint sy))
+    (= res 0)))
+;;  (compare (canonicalZip x) (canonicalZip y)))
 
 ;;;;;;;;;;;;
 ;; macro's for comparison
@@ -51,7 +61,7 @@
   `(is (strComp ~patch (findPatchesZipper ~org ~mod))  (str " DISCOVER-TEST:" ~msg)))
 
 (defmacro applyTest [patch org mod msg]
-  `(is (compareZip ~mod (applyPatchesZipper ~org ~patch))  (str " APPLY-TEST:" ~msg)))
+  `(is (compareZip  (applyPatchesZipper ~org ~patch) ~mod)  (str " APPLY-TEST:" ~msg)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -209,11 +219,11 @@
   (discoverTest patch2c org2 mod2c  msg2c)
   )
 
-;; (deftest test2reverse ;; 
-;;   (applyTest patch2a org2 mod2a  msg2a)
-;;   (applyTest patch2b org2 mod2b  msg2b)
-;;   (applyTest patch2c org2 mod2c  msg2c)
-;;   )
+(deftest test2reverse ;; 
+  (applyTest patch2a org2 mod2a  msg2a)
+  (applyTest patch2b org2 mod2b  msg2b)
+  (applyTest patch2c org2 mod2c  msg2c)
+  )
 
 (println "test2reverse temporarily excluded")
 
@@ -471,6 +481,7 @@
   )
 
 
+
 ;;;;;;;;;;;;;
 ;; test 6: Test-suite for detection of deletions in vectors
 ;;  (detecting a shift instead of set of changes to subsequent elements of the vector.)
@@ -505,8 +516,8 @@
 
 (def mod6d (jsonZipper []))
 
-(def patch6d [(Patch. ["/"] actDelete "[0]" nil)
-	      (Patch. ["/"] actDelete "[1]" nil)])
+(def patch6d [(Patch. ["/"] actDelete "[1]" nil)
+	      (Patch. ["/"] actDelete "[0]" nil)])
 
 (def msg6d "delete all fields of vector")
 
@@ -550,13 +561,13 @@
   (discoverTest patch6g org6efg mod6g  msg6g)
   )
 
-(deftest test6 ;; 
-  (applyTest patch6a org6abcd mod6a  msg6a)
-  (applyTest patch6b org6abcd mod6b  msg6b)
-  (applyTest patch6c org6abcd mod6c  msg6c)
-  (applyTest patch6d org6abcd mod6d  msg6d)
-  (applyTest patch6e org6efg mod6e  msg6e)
-  (applyTest patch6f org6efg mod6f  msg6f)
-  (applyTest patch6g org6efg mod6g  msg6g)
-  )
+;; (deftest test6 ;; 
+;;   (applyTest patch6a org6abcd mod6a  msg6a)
+;;   (applyTest patch6b org6abcd mod6b  msg6b)
+;;   (applyTest patch6c org6abcd mod6c  msg6c)
+;;   (applyTest patch6d org6abcd mod6d  msg6d)
+;;   (applyTest patch6e org6efg mod6e  msg6e)
+;;   (applyTest patch6f org6efg mod6f  msg6f)
+;;   (applyTest patch6g org6efg mod6g  msg6g)
+;;   )
 
