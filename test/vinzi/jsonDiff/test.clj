@@ -225,7 +225,6 @@
   (applyTest patch2c org2 mod2c  msg2c)
   )
 
-(println "test2reverse temporarily excluded")
 
 
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -530,8 +529,8 @@
 (def mod6e (jsonZipper [1 5]))
 
 (def patch6e [(Patch. ["/"] actDelete "[1]" nil)
-	      (Patch. ["/"] actDelete "[1]" nil)
-	      (Patch. ["/"] actDelete "[1]" nil)])
+	      (Patch. ["/"] actDelete "[2]" nil)
+	      (Patch. ["/"] actDelete "[3]" nil)])
 
 (def msg6e "delete fields at position 2-4")
 
@@ -539,7 +538,7 @@
 (def mod6f (jsonZipper [1 3 5]))
 
 (def patch6f [(Patch. ["/"] actDelete "[1]" nil)
-	      (Patch. ["/"] actDelete "[2]" nil)])
+	      (Patch. ["/"] actDelete "[3]" nil)])
 
 (def msg6f "delete fields at position 2 and 4")
 
@@ -561,13 +560,13 @@
   (discoverTest patch6g org6efg mod6g  msg6g)
   )
 
-;; (deftest test6 ;; 
-;;   (applyTest patch6a org6abcd mod6a  msg6a)
-;;   (applyTest patch6b org6abcd mod6b  msg6b)
-;;   (applyTest patch6c org6abcd mod6c  msg6c)
-;;   (applyTest patch6d org6abcd mod6d  msg6d)
-;;   (applyTest patch6e org6efg mod6e  msg6e)
-;;   (applyTest patch6f org6efg mod6f  msg6f)
-;;   (applyTest patch6g org6efg mod6g  msg6g)
-;;   )
+(deftest test6reverse ;; 
+  (applyTest patch6a org6abcd mod6a  msg6a)
+  (applyTest patch6b org6abcd mod6b  msg6b)
+  (applyTest patch6c org6abcd mod6c  msg6c)
+  (applyTest patch6d org6abcd mod6d  msg6d)
+  (applyTest patch6e org6efg mod6e  msg6e)
+  (applyTest patch6f org6efg mod6f  msg6f)
+  (applyTest patch6g org6efg mod6g  msg6g)
+  )
 

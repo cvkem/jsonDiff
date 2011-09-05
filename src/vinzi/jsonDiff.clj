@@ -5,6 +5,14 @@
   (:use [vinzi.jsonZip])
   )
 
+
+(def allowErrs false)
+
+(defn allowErors [] (def allowErrs true))
+(defn nilOnError [] (def allowErrs false))
+
+
+
 ;;;; temporay include debugger
 
 (defn contextual-eval [ctx expr]
@@ -31,12 +39,16 @@
     :read readr
     :eval (partial contextual-eval (local-context))))
 
+(defmacro show-local-context []
+  (pprint (local-context))
+  )
 
 (defmacro dbg [x] `(let [x# ~x] (do (println '~x "=" x#) (flush)) x#))
 (defmacro dbg1 [x] `(let [x# ~x] (do (println '~x "=" x#) (flush)) x#))
 (defmacro dbgp [x] `(let [x# ~x] (do (println '~x "=") (pprint x#) (flush)) x#))
 (defmacro dbgm [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
 (defmacro dbgm1 [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
+(defmacro dbgm2 [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
 
 (defmacro dbg [x] x)
 (defmacro dbg1 [x] x)
@@ -96,11 +108,12 @@
   "Search the set of patches needed to translate zipper 'org' to zipper 'mod'. In the case
    that elements are vectors it is assumed that additions are only made at tail-position
    of the vector. The routine assumes ordering of elements is hashmaps is irrelevant."
-  ([org mod] 
+  ([org mod] (findPatchesZipper org mod false))
+  ([org mod quitOnPatch]
      (testZipperRootPos org  "findPatches/org")
      (testZipperRootPos mod "findPatches/mod")
      (assert (= (jsonKey org) (jsonKey mod)))
-     (findPatchesZipper org mod [] [] false))
+     (findPatchesZipper org mod [] [] quitOnPatch))
   ([org mod patches path quitOnPatch]
      (let [parPath path
 	   path (if (nil? org)
@@ -367,10 +380,17 @@
 	modZip (jsonZipper mod)]
     (findPatchesZipper orgZip modZip)))
 
+(defn jsonChanged?
+  "Checks whether there are (material) differences between the two objects (at least one patch needed)"
+  [org mod]
+  (let [orgZip (jsonZipper org)
+	modZip (jsonZipper mod)]
+    (findPatchesZipper orgZip modZip true)))
 
 
-(defn applyPatchesZipper
-  "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper"
+
+(defn applyPatchesZipperAux
+  "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper. Zipper will be a the location of the last modification (or it's predecessor in case of a delete)."
   [org patches]
   (let [applyDelete (fn [loc pathList key value]
 		      (assert (not value))
@@ -396,12 +416,37 @@
       org)))
 
 
+(defn applyPatchesZipper
+  "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper at a root location."
+  [org patches]
+  (when (not allowErrs)
+    (clearZipErrors))
+  (let [res (zipTop (applyPatchesZipperAux org patches))
+	printErrors (fn []
+		      (let [errs (getZipErrors)]
+			(if (and errs (not (empty? errs)))
+			  (do
+			    (println "applyPatches resulted in Errors:")
+			    (loop [nr 1
+				   msg errs]
+			      (when (first msg)
+				(println " ERROR " nr ": " (first msg))
+				(recur (inc nr) (rest msg))))
+			    true)
+			  false))) ]
+    (if (or allowErrs
+	    (not (printErrors)))
+      res
+      nil)))
+
+
 (defn applyPatchesJson
   "Applies the 'patches' to json-object 'org' and returns the modified object.
    Wrapper that calls 'applyPatchesZipper' (See 'applyPatchesZipper' for details)."
   [org patches]
-  (zip/root (applyPatchesZipper (jsonZipper org) patches))
-  )
+  (if-let [modified (applyPatchesZipper (jsonZipper org) patches)]
+    (jsonRoot modified)
+    nil))
 
 
 
@@ -485,4 +530,44 @@
 ;;       org)))
 
 
+
+
+(comment  ;; test code
 ;;(findPatchesZipper o5n m5n)
+
+
+
+;; temporary patch
+
+(def org6efg (jsonZipper [-10
+			 -11
+			 -12
+			 -13
+			 -14]))
+
+(def mod6e (jsonZipper [1 5]))
+
+(def patch6e [(Patch. ["/"] actDelete "[1]" nil)
+	      (Patch. ["/"] actDelete "[1]" nil)
+	      (Patch. ["/"] actDelete "[1]" nil)])
+
+(def patch6a [(Patch. ["/"] actDelete "[1]" nil)])
+(def patch6c [(Patch. ["/"] actDelete "[2]" nil)])
+
+(def patch6b [(Patch. ["/"] actDelete "[1]" nil)
+	      (Patch. ["/"] actDelete "[1]" nil)])
+
+
+(println " One deleted") 
+(pprintJsonZipper (applyPatchesZipper org6efg patch6e))
+
+(println "\n\n two deleted")
+(pprintJsonZipper (applyPatchesZipper org6efg patch6a))
+
+(println "\n\n three deleted")
+(pprintJsonZipper (applyPatchesZipper org6efg patch6b))
+
+(println "\n\n position [2] deleted")
+(pprintJsonZipper (applyPatchesZipper org6efg patch6c))
+
+);;; test code
