@@ -7,35 +7,54 @@
   )
 
 
-(def allowErrs false)
+(defn- patchErr
+  "Use the zipErrors queue such that errors of both libraries are properly ordered (interleaved). The error is added to the zipErrs message-queue. The boolean 'printZipErrors' determines whether the error will be printed to *out* too."
+  ([msg] (patchErr msg nil))
+  ([msg ret] (zipError (str "PATCH-ERROR:" msg))))
 
-(defn allowErors [] (def allowErrs true))
-(defn nilOnError [] (def allowErrs false))
 
 
-(defmacro if2
-  "This macro provides an if-statement that enforces the usage of an else-clause. (In a normal else statement a small error in the bracketing can cause that the else-part becomes part of the surrounding code (always gets executed). "
-  [c t f]
-  `(if ~c ~t ~f))
-
-;;;; temporay include debugger
+;;;;;;;;;;;;;;;;;  temporary debugger
 
 (defn contextual-eval [ctx expr]
   (eval
    `(let [~@(mapcat (fn [[k v]] [k `'~v]) ctx)]
       ~expr)))
 
+(defn printlnLimit
+  "Print an item, but limit the length of the output to 'c' characters."
+  [p  c]
+  (let [s (str p)
+	s (if (> (count s) c) (str (apply str (take c s)) "...") s)]
+    (println s)
+    (when (coll? p)
+      (print "  first element: ")
+      (printlnLimit (first p) c))))
 
-(defn readr [prompt exit-code]
-  (let [input (clojure.main/repl-read prompt exit-code)]
-    (if2 (= input ::tl)
-      exit-code
-      input)))
-
+(defn showMap [m]
+  (doseq [i m]
+    (let [k (key i)]
+      (print "in local-context the key '" (key i) "'")
+      (let [v (val i)
+	    t (type v)]
+	(println "  contains a type '" t "' with value:") (flush)
+	(printlnLimit v 80) (flush)))))
 
 (defmacro local-context []
   (let [symbols (keys &env)]
     (zipmap (map (fn [sym] `(quote ~sym)) symbols) symbols)))
+
+(defmacro show-local-context [msg]
+  `(println ~msg)
+  `(showMap (local-context)))
+
+
+(defn readr [prompt exit-code]
+(let [input (clojure.main/repl-read prompt exit-code)]
+  (println "Read:  " input) (flush)
+    (if (= input ())
+	exit-code
+	input)))
 
 
 (defmacro break []
@@ -44,16 +63,16 @@
     :read readr
     :eval (partial contextual-eval (local-context))))
 
-(defmacro show-local-context []
-  (pprint (local-context))
-  )
+;;;;;;;;;;;;;;;;;  temporary debugger
 
-(defmacro dbg [x] `(let [x# ~x] (do (println '~x "=" x#) (flush)) x#))
-(defmacro dbg1 [x] `(let [x# ~x] (do (println '~x "=" x#) (flush)) x#))
-(defmacro dbgp [x] `(let [x# ~x] (do (println '~x "=") (pprint x#) (flush)) x#))
-(defmacro dbgm [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
-(defmacro dbgm1 [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
-(defmacro dbgm2 [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
+
+
+(defmacro if2
+  "This macro provides an if-statement that enforces the usage of an else-clause. (In a normal else statement a small error in the bracketing can cause that the else-part becomes part of the surrounding code (always gets executed). "
+  [c t f]
+  `(if ~c ~t ~f))
+
+
 
 (defmacro dm [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
 (defmacro dm1 [m x] `(let [x# ~x] (do (println ~m " : " '~x "=" x#) (flush)) x#))
@@ -166,13 +185,6 @@
     (flush)
     (assert false)
     (println "THIS SHOULD NEVER BE EXECUTED") (flush))))
-
-(defn reportError
-  ([msg] (reportError msg nil))
-  ([msg ret]
-     (println "ERROR: " msg)
-     ret))
-
 
 
 
@@ -365,7 +377,7 @@
 			      (let [orgId  (getVectId org)
 				    modId  (getVectId mod)]
 				(if2 (not= orgId modId)
-				  (reportError (format (str "The origing uses vector-id %s "
+				  (patchErr (format (str "The origing uses vector-id %s "
 							    "and the modified version uses %s.\n"
 							    "Can not process this substree !!" orgId modId)))
 				  (if2 orgId
@@ -451,7 +463,7 @@
     (findPatchesZipper orgZip modZip)))
 
 (defn jsonChanged?
-  "Checks whether there are (material) differences between the two objects (at least one patch needed)"
+  "Checks whether there are (material) differences between the two objects (at least one patch difference). Quits on detecting the first difference/patch."
   [org mod]
   (let [orgZip (jsonZipper org)
 	modZip (jsonZipper mod)]
@@ -460,7 +472,7 @@
 
 
 (defn applyPatchesZipperAux
-  "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper. Zipper will be a the location of the last modification (or it's predecessor in case of a delete)."
+  "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper. Zipper will be a the location of the last modification (or it's predecessor in case of a delete operations.)."
   [org patches]
   (let [applyDelete (fn [loc pathList key value]
 		      (assert (not value))
@@ -473,13 +485,14 @@
 		actInsert applyInsert
 		actChange applyChange}]
     (if2 (seq patches)
-      (let [{:keys [pathList action key value]} (dm1 "Processing patch " (first patches))
+	 (let [cPatch (dm1 "Processing patch " (first patches))
+	       {:keys [pathList action key value]} cPatch 
 	    actionFunc (action actMap)
 	    mod (actionFunc org pathList key value)]
 	(if mod
 	  (recur mod (rest patches))
 	  (do
-	    (println "APPLY failed on patch " (first patches) " returned nil")
+	    (patchErr (format "Apply failed on patch %s (patch ignored)" cPatch))
 	    (recur org (rest patches)))))
       org)))
 
@@ -487,26 +500,9 @@
 (defn applyPatchesZipper
   "Applies the 'patches' to jsonZipper 'org' and returns the modified zipper at a root location."
   [org patches]
-  (when (not allowErrs)
-    (clearZipErrors))
-  (let [res (zipTop (applyPatchesZipperAux org patches))
-	printErrors (fn []
-		      (let [errs (getZipErrors)]
-			(if2 (and errs (not (empty? errs)))
-			  (do
-			    (println "applyPatches resulted in Errors:")
-			    (loop [nr 1
-				   msg errs]
-			      (when (first msg)
-				(println " ERROR " nr ": " (first msg))
-				(recur (inc nr) (rest msg))))
-			    true)
-			  false))) ]
-    (if2 (or allowErrs
-	    (not (printErrors)))
-      res
-      nil)))
-
+  (let [res (zipTop (applyPatchesZipperAux org patches))]
+    res))
+  
 
 (defn applyPatchesJson
   "Applies the 'patches' to json-object 'org' and returns the modified object.
@@ -516,7 +512,16 @@
     (jsonRoot modified)
     nil))
 
-
+(defn getPathStrPatch
+  "Get a string representation of the path list of the patch."
+  [patch]
+ {:pre [(= (str (type patch)) "class vinzi.jsonDiff.Patch")]} 
+  (let [pList  (:pathList patch)
+	head   (first pList)]
+    (if (and (= head "") (<= (count pList) 1)) ""
+	(if (= head "/")
+	  (apply str (interpose "/" (rest pList)))
+	  (println "ERROR in format pathList: " pList)))))
 
 
 (comment   ;; test code to read a large datafile (and check for patches)
@@ -571,4 +576,4 @@
 (println "\n\n position [2] deleted")
 (pprintJsonZipper (applyPatchesZipper org6efg patch6c))
 
-);;; test code
+);;; test code 

@@ -13,19 +13,24 @@
   (:require  [clojure  [zip :as zip]])
   )
 
-
-(defn- strComp [x y]
-  ;; (print "Comparing x = ")
-  ;; (pprint x)
-  ;; (print "     with y = ")
-  ;; (pprint y)
+(defn- strDist [x y]
   (compare (str x) (str y)))
 
+
+(defn- strCompare [x y]
+  (let [cmp (strDist x y)]
+    (when (not= cmp 0)
+      (print "Comparing x = ")
+      (pprint x)
+      (print "     with y = ")
+      (pprint y))
+    (= cmp 0)))
+
 (defn- sort-map [m]
-  (into (sorted-map-by strComp) m))
+  (into (sorted-map-by strDist) m))
 
 (defn- sort-set [s]
-  (into (sorted-set-by strComp) s))
+  (into (sorted-set-by strDist) s))
 
 (defn- sForm [f]
   (if (map? f)
@@ -45,7 +50,7 @@
 (defn compareZip [x y]
   (let [sx  (canonicalZip x)
 	sy  (canonicalZip y)
-	res (strComp sx sy)]
+	res (strDist sx sy)]
     (when (not= res 0)
       (println  "equalForms:   " res)
       (print "with x: ") (pprint sx)
@@ -58,7 +63,12 @@
 ;;
 
 (defmacro discoverTest [patch org mod msg]
-  `(is (strComp ~patch (findPatchesZipper ~org ~mod))  (str " DISCOVER-TEST:" ~msg)))
+  `(is (strCompare ~patch (findPatchesZipper ~org ~mod))  (str " DISCOVER-TEST:" ~msg)))
+
+(defmacro discoverShow [patch org mod msg]
+  `(let [res# (findPatchesZipper ~org ~mod)]
+     (println "SHOW" ~msg)
+     (doseq [r# res#] (println r#))))
 
 (defmacro applyTest [patch org mod msg]
   `(is (compareZip  (applyPatchesZipper ~org ~patch) ~mod)  (str " APPLY-TEST:" ~msg)))
@@ -415,7 +425,7 @@
 
 
 ;;;;;;;;;;;;;
-;; test 5: all tests are looking for an empty set of patches (no ghost-pathces)
+;; test 5: all tests are looking for an empty set of patches (no detection of ghost-patches)
 ;;
 
 ;; test 5a
@@ -568,5 +578,56 @@
   (applyTest patch6e org6efg mod6e  msg6e)
   (applyTest patch6f org6efg mod6f  msg6f)
   (applyTest patch6g org6efg mod6g  msg6g)
+  )
+
+
+
+;;;;;;;;;;;;;
+;; test 7: Test-suite for detection of deletions in vectors
+;;  (detecting a shift instead of set of changes to subsequent elements of the vector.)
+;;
+
+
+(def org7a (jsonZipper [{"name"  "abc"  "value"  "def"}
+			{"name"  "ghi"  "value"  "jkl"}
+			{"name"  "mno"  "value"  "pqr"} ]))
+(def mod7a (jsonZipper [{"name"  "abc"  "value"  "def"}
+			{"name"  "ghi"  "value"  "XYZ"}
+			{"name"  "mno"  "value"  "pqr"} ]))
+(def patch7a [(Patch. ["/" "ghi"] actChange "value" "XYZ")])
+(def msg7a "changing in a vector with a 'vectorId'  name")
+
+
+(def org7b (jsonZipper [{"id"  "abc"  "value"  "def"}
+			{"id"  "ghi"  "value"  "jkl"}
+			{"id"  "mno"  "value"  "pqr"} ]))
+(def mod7b (jsonZipper [{"id"  "abc"  "value"  "def"}
+			{"id"  "ghi"  "value"  "XYZ"}
+			{"id"  "mno"  "value"  "pqr"} ]))
+(def patch7b [(Patch. ["/" "ghi"] actChange "value" "XYZ")])
+(def msg7b "changing in a vector with a 'vectorId'  id")
+
+(discoverShow patch7a org7a mod7a  msg7a)
+
+(def org7c (jsonZipper {"layout" [{"id"  "abc"  "value"  "def"}
+				 {"id"  "ghi"  "value"  "jkl"}
+				 {"id"  "mno"  "value"  "pqr"} ]}))
+(def mod7c (jsonZipper {"layout" [{"id"  "abc"  "value"  "def"}
+			{"id"  "ghi"  "value"  "XYZ"}
+			{"id"  "mno"  "value"  "pqr"} ]}))
+(def patch7c [(Patch. ["/" "ghi"] actChange "value" "XYZ")])
+(def msg7c "changing in a vector with a 'vectorId'  id which is at a second level (within a map)")
+
+(discoverShow patch7a org7a mod7a  msg7a)
+
+
+(deftest test7 ;; 
+  (discoverTest patch7a org7a mod7a  msg7a)
+  (discoverTest patch7b org7b mod7b  msg7b)
+  )
+
+(deftest test7reverse ;; 
+  (applyTest patch7a org7a mod7a  msg7a)
+  (applyTest patch7b org7b mod7b  msg7b)
   )
 
