@@ -505,8 +505,8 @@
 
 
 (comment   ;; test code to read a large datafile (and check for patches)
-(use 'clojure.contrib.io)
-(use 'clojure.contrib.json)
+(use 'clojure.java.io)
+(use 'clojure.data.json)
 
 (def s (with-open [f (reader "../cdfdeMgt/data/EIS-poc.cdfde")] (read-json f)))
 (def s1 (with-open [f (reader "../cdfdeMgt/data/EIS-mod.cdfde")] (read-json f)))

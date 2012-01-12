@@ -1,6 +1,6 @@
 FOLDER=jsonDiff
 BASE=jsondiff
-VERSION=1.0.0
+VERSION=1.0.1
 POSTFIX=""     # default is "-SNAPSHOT"
 echo  " Adding  ${BASE}  to the local maven repository"
 
